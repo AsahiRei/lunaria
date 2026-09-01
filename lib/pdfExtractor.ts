@@ -29,6 +29,66 @@ export async function extractTextFromPdf(uri: string): Promise<string> {
   return text;
 }
 
+const CHUNK_TOKEN_BUDGET = 900;
+const MAX_REVIEW_CHUNKS = 4;
+
+function charsForTokens(tokens: number): number {
+  return tokens * 4;
+}
+
+/** Split a long document into evenly spaced sections the 1.5B model can finish. */
+export function chunkDocument(
+  text: string,
+  maxTokensPerChunk: number = CHUNK_TOKEN_BUDGET,
+  maxChunks: number = MAX_REVIEW_CHUNKS
+): string[] {
+  const cleaned = text.replace(/\r/g, "").trim();
+  if (!cleaned) return [];
+
+  const chunkChars = charsForTokens(maxTokensPerChunk);
+  if (cleaned.length <= chunkChars) {
+    return [cleaned];
+  }
+
+  const parts = cleaned.split(/\n+/).filter((line) => line.trim().length > 0);
+  const sequential: string[] = [];
+  let current = "";
+
+  for (const part of parts) {
+    if (part.length > chunkChars) {
+      if (current.trim()) {
+        sequential.push(current.trim());
+        current = "";
+      }
+      for (let i = 0; i < part.length; i += chunkChars) {
+        sequential.push(part.slice(i, i + chunkChars).trim());
+      }
+      continue;
+    }
+
+    const next = current ? `${current}\n${part}` : part;
+    if (next.length > chunkChars && current.length > 0) {
+      sequential.push(current.trim());
+      current = part;
+    } else {
+      current = next;
+    }
+  }
+  if (current.trim()) sequential.push(current.trim());
+
+  if (sequential.length <= maxChunks) return sequential;
+
+  const sampled: string[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < maxChunks; i++) {
+    const idx = Math.round((i * (sequential.length - 1)) / (maxChunks - 1));
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    sampled.push(sequential[idx]);
+  }
+  return sampled;
+}
+
 export function smartExtract(text: string, maxTokens: number = 2500): string {
   const approxChars = maxTokens * 4;
   if (text.length <= approxChars) return text;

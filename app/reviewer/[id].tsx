@@ -13,6 +13,7 @@ const FALLBACK_REVIEWER = {
   subtitle: "Generate one from the Add PDF tab",
   summary: [],
   formulas: [],
+  concepts: [],
   keywords: [],
 };
 
@@ -24,6 +25,10 @@ export default function ReviewerScreen() {
   const getReviewer = useReviewerStore((s) => s.getReviewer);
 
   const data = (id ? getReviewer(id) : undefined) ?? FALLBACK_REVIEWER;
+  const conceptTerms = new Set(data.concepts.map((c) => c.term.toLowerCase()));
+  const uniqueKeywords = data.keywords.filter(
+    (k) => !conceptTerms.has(k.term.toLowerCase())
+  );
 
   return (
     <View className="flex-1 bg-midnight">
@@ -88,7 +93,7 @@ export default function ReviewerScreen() {
           </View>
         </FadeIn>
 
-        {activeTab === "reviewer" && (data.formulas.length > 0 || data.keywords.length > 0) && (
+        {activeTab === "reviewer" && (data.formulas.length > 0 || data.concepts.length > 0 || uniqueKeywords.length > 0) && (
           <FadeIn delay={70}>
             <View className="flex-row justify-end mb-4 gap-2">
               <TouchableOpacity
@@ -152,6 +157,52 @@ export default function ReviewerScreen() {
               </FadeIn>
             )}
 
+            {data.concepts.length > 0 && (
+              <FadeIn delay={140}>
+                <LinearGradient
+                  colors={[...Gradient.card]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  className="rounded-xl p-4 border border-midnight-border mb-4 overflow-hidden"
+                  style={Shadows.card}
+                >
+                  <View className="flex-row items-center gap-2 mb-3">
+                    <Tag size={18} color={Colors.primary} />
+                    <Text className="text-base font-semibold text-ltext">Key Concepts</Text>
+                  </View>
+                  {viewMode === "list" ? (
+                    <View className="gap-2">
+                      {data.concepts.map((item, i) => (
+                        <View
+                          key={i}
+                          className={`pb-2 ${
+                            i < data.concepts.length - 1 ? "border-b border-midnight-border" : ""
+                          }`}
+                        >
+                          <Text className="text-sm font-semibold text-ltext mb-0.5">
+                            {item.term}
+                          </Text>
+                          <Text className="text-xs text-ltext-secondary leading-4">
+                            {item.definition}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <FlashCardPager
+                      items={data.concepts.map((item) => ({
+                        frontLabel: "Concept",
+                        frontValue: item.term,
+                        backLabel: "Definition",
+                        backValue: item.definition,
+                        accentColor: Colors.primary,
+                      }))}
+                    />
+                  )}
+                </LinearGradient>
+              </FadeIn>
+            )}
+
             {data.formulas.length > 0 && (
               <FadeIn delay={180}>
                 <LinearGradient
@@ -194,7 +245,7 @@ export default function ReviewerScreen() {
               </FadeIn>
             )}
 
-            {data.keywords.length > 0 && (
+            {uniqueKeywords.length > 0 && (
               <FadeIn delay={320}>
                 <LinearGradient
                   colors={[...Gradient.card]}
@@ -209,11 +260,11 @@ export default function ReviewerScreen() {
                   </View>
                   {viewMode === "list" ? (
                     <View className="gap-2">
-                      {data.keywords.map((item, i) => (
+                      {uniqueKeywords.map((item, i) => (
                         <View
                           key={i}
                           className={`pb-2 ${
-                            i < data.keywords.length - 1 ? "border-b border-midnight-border" : ""
+                            i < uniqueKeywords.length - 1 ? "border-b border-midnight-border" : ""
                           }`}
                         >
                           <Text className="text-sm font-semibold text-ltext mb-0.5">
@@ -227,7 +278,7 @@ export default function ReviewerScreen() {
                     </View>
                   ) : (
                     <FlashCardPager
-                      items={data.keywords.map((item) => ({
+                      items={uniqueKeywords.map((item) => ({
                         frontLabel: "Keyword",
                         frontValue: item.term,
                         backLabel: "Definition",

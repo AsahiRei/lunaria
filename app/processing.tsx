@@ -1,13 +1,27 @@
 import { useEffect, useCallback, useRef } from "react";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { Brain, ArrowLeft, CheckCircle2, Loader2, FileText } from "lucide-react-native";
 import { Colors } from "../constants/theme";
 import { useReviewerStore, type GenerationState, type ReviewerData } from "../store/useReviewerStore";
 import { useLlama } from "../hooks/useLlama";
 import { useGenerationMetrics } from "../hooks/useGenerationMetrics";
-import { extractTextFromPdf, smartExtract } from "../lib/pdfExtractor";
-import { buildMessages, parseReviewerResponse } from "../lib/reviewerPrompt";
+import { extractTextFromPdf, chunkDocument } from "../lib/pdfExtractor";
+import {
+  buildMessages,
+  parseReviewerResponse,
+  mergeReviewers,
+  REVIEWER_JSON_SCHEMA,
+} from "../lib/reviewerPrompt";
 import { getCachedReviewer, setCachedReviewer } from "../lib/cache";
 
 const STEPS = [
@@ -17,6 +31,101 @@ const STEPS = [
   { key: "generating", label: "Generating reviewer" },
   { key: "parsing", label: "Finalizing results" },
 ];
+
+function SpinningIcon({ size, color }: { size: number; color: string }) {
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 900, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, [rotation]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  return (
+    <Animated.View style={style}>
+      <Loader2 size={size} color={color} />
+    </Animated.View>
+  );
+}
+
+function ProcessingOrb({ isDone, isError }: { isDone: boolean; isError: boolean }) {
+  const pulse = useSharedValue(1);
+  const ring = useSharedValue(0);
+
+  useEffect(() => {
+    if (isDone || isError) {
+      cancelAnimation(pulse);
+      cancelAnimation(ring);
+      pulse.value = withTiming(1, { duration: 250 });
+      return;
+    }
+
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.12, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+    ring.value = withRepeat(
+      withTiming(360, { duration: 2800, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, [isDone, isError, pulse, ring]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+  }));
+
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${ring.value}deg` }],
+  }));
+
+  const tint = isDone
+    ? "rgba(74, 222, 128, 0.15)"
+    : isError
+      ? "rgba(248, 113, 113, 0.15)"
+      : "rgba(99, 102, 241, 0.15)";
+
+  return (
+    <View className="w-28 h-28 items-center justify-center mb-6">
+      {!isDone && !isError && (
+        <Animated.View
+          className="absolute w-28 h-28 rounded-full"
+          style={[
+            ringStyle,
+            {
+              borderWidth: 2,
+              borderColor: "transparent",
+              borderTopColor: Colors.primary,
+              borderRightColor: Colors.primaryLight,
+            },
+          ]}
+        />
+      )}
+      <Animated.View
+        className="w-24 h-24 rounded-full items-center justify-center"
+        style={[pulseStyle, { backgroundColor: tint }]}
+      >
+        {isDone ? (
+          <CheckCircle2 size={48} color={Colors.success} />
+        ) : isError ? (
+          <ArrowLeft size={48} color={Colors.error} />
+        ) : (
+          <Brain size={48} color={Colors.primary} />
+        )}
+      </Animated.View>
+    </View>
+  );
+}
 
 function getStepIndex(state: GenerationState, progress: string): number {
   if (state === "done") return STEPS.length;
@@ -74,10 +183,10 @@ export default function ProcessingScreen() {
         return;
       }
 
-      const truncated = smartExtract(pdfText, 2000);
-      startGeneration(truncated.length);
+      const chunks = chunkDocument(pdfText);
+      startGeneration(pdfText.length);
 
-      const cached = await getCachedReviewer(truncated);
+      const cached = await getCachedReviewer(pdfText);
       if (cached) {
         console.log("[processing] Using cached reviewer");
         reviewerData = cached;
@@ -121,49 +230,90 @@ export default function ProcessingScreen() {
 
       setGenerationState("generating", "Analyzing document...");
 
-      const messages = buildMessages(
-        truncated,
-        focusTopic || undefined,
-        pageRange === "custom" ? customRange : undefined
-      );
-
-      let attempts = 0;
-      const maxAttempts = 3;
+      const parts: ReviewerData[] = [];
       let tokenCount = 0;
+      const maxAttempts = chunks.length > 1 ? 2 : 3;
 
-      while (!reviewerData && attempts < maxAttempts) {
-        attempts++;
-        tokenCount = 0;
-        setGenerationState("generating", `Generating reviewer... (attempt ${attempts}/${maxAttempts})`);
-
-        const result = await ctx.completion(
-          {
-            messages,
-            n_predict: 2000,
-            temperature: 0.3,
-            top_p: 0.9,
-            top_k: 45,
-            penalty_repeat: 1.1,
-            stop: ["</s>", "<|end|>", "<|eot_id|>", "<|end_of_text|>"],
-          },
-          (data) => {
-            if (data.token) {
-              tokenCount++;
-              updateTokens(tokenCount);
-              if (tokenCount % 20 === 0) {
-                setGenerationState("generating", `Generating... (${tokenCount} tokens)`);
-              }
-            }
-          }
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const sectionHint =
+          chunks.length > 1
+            ? `This is section ${chunkIndex + 1} of ${chunks.length}. Extract terms unique to this section.`
+            : undefined;
+        const messages = buildMessages(
+          chunks[chunkIndex],
+          focusTopic || undefined,
+          pageRange === "custom" ? customRange : undefined,
+          sectionHint
         );
 
-        setGenerationState("generating", "Parsing results...");
-        console.log("[processing] Raw text:", result.text?.slice(0, 500));
-        console.log("[processing] Raw content:", result.content?.slice(0, 500));
-        console.log("[processing] truncated:", result.truncated, "stopped_limit:", result.stopped_limit, "tokens_predicted:", result.tokens_predicted);
-        reviewerData = parseReviewerResponse(result.text || result.content);
-        endGeneration(tokenCount, !!reviewerData);
+        let chunkReviewer: ReviewerData | null = null;
+        let attempts = 0;
+
+        while (!chunkReviewer && attempts < maxAttempts) {
+          attempts++;
+          const sectionLabel =
+            chunks.length > 1
+              ? `section ${chunkIndex + 1}/${chunks.length}`
+              : "reviewer";
+          setGenerationState(
+            "generating",
+            `Generating ${sectionLabel}... (attempt ${attempts}/${maxAttempts})`
+          );
+
+          const result = await ctx.completion(
+            {
+              messages,
+              n_predict: 2000,
+              temperature: 0.3 + (attempts - 1) * 0.15,
+              top_p: 0.9,
+              top_k: 45,
+              penalty_repeat: 1.1,
+              stop: ["</s>", "<|end|>", "<|eot_id|>", "<|end_of_text|>"],
+              response_format: {
+                type: "json_schema",
+                json_schema: {
+                  strict: true,
+                  schema: REVIEWER_JSON_SCHEMA,
+                },
+              },
+            },
+            (data) => {
+              if (data.token) {
+                tokenCount++;
+                updateTokens(tokenCount);
+                if (tokenCount % 20 === 0) {
+                  setGenerationState(
+                    "generating",
+                    `Generating ${sectionLabel}... (${tokenCount} tokens)`
+                  );
+                }
+              }
+            }
+          );
+
+          setGenerationState("generating", "Parsing results...");
+          console.log("[processing] Raw text:", result.text?.slice(0, 500));
+          console.log("[processing] Raw content:", result.content?.slice(0, 500));
+          console.log(
+            "[processing] truncated:",
+            result.truncated,
+            "stopped_limit:",
+            result.stopped_limit,
+            "tokens_predicted:",
+            result.tokens_predicted
+          );
+          chunkReviewer = parseReviewerResponse(result.text || result.content);
+        }
+
+        if (chunkReviewer) {
+          parts.push(chunkReviewer);
+        } else {
+          console.log("[processing] Skipping failed section", chunkIndex + 1);
+        }
       }
+
+      endGeneration(tokenCount, parts.length > 0);
+      reviewerData = mergeReviewers(parts);
 
       if (!reviewerData) {
         Alert.alert(
@@ -187,7 +337,7 @@ export default function ProcessingScreen() {
       };
 
       addSubject(subject, reviewerData);
-      setCachedReviewer(truncated, reviewerData);
+      setCachedReviewer(pdfText, reviewerData);
       setGenerationState("done");
 
       setTimeout(() => {
@@ -244,24 +394,7 @@ export default function ProcessingScreen() {
 
       <View className="flex-1 items-center justify-center px-8">
         <View className="items-center mb-12">
-          <View
-            className="w-24 h-24 rounded-full items-center justify-center mb-6"
-            style={{
-              backgroundColor: isDone
-                ? "rgba(74, 222, 128, 0.15)"
-                : isError
-                ? "rgba(248, 113, 113, 0.15)"
-                : "rgba(99, 102, 241, 0.15)",
-            }}
-          >
-            {isDone ? (
-              <CheckCircle2 size={48} color={Colors.success} />
-            ) : isError ? (
-              <ArrowLeft size={48} color={Colors.error} />
-            ) : (
-              <Brain size={48} color={Colors.primary} />
-            )}
-          </View>
+          <ProcessingOrb isDone={isDone} isError={isError} />
 
           <Text className="text-xl font-semibold text-ltext text-center mb-2">
             {isDone
@@ -315,7 +448,7 @@ export default function ProcessingScreen() {
                   {isCompleted ? (
                     <CheckCircle2 size={16} color={Colors.success} />
                   ) : isActive ? (
-                    <Loader2 size={16} color={Colors.primary} />
+                    <SpinningIcon size={16} color={Colors.primary} />
                   ) : (
                     <Text className="text-xs text-ltext-muted font-medium">
                       {i + 1}
@@ -338,7 +471,7 @@ export default function ProcessingScreen() {
                 </Text>
 
                 {isActive && !isDone && (
-                  <Loader2 size={14} color={Colors.primary} />
+                  <SpinningIcon size={14} color={Colors.primary} />
                 )}
               </View>
             );
