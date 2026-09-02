@@ -5,8 +5,10 @@ import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useReviewerStore } from "../store/useReviewerStore";
 import { useOnboardingStore } from "../store/useOnboardingStore";
+import { useReminderStore } from "../store/useReminderStore";
 import { ModelReminderGate } from "../components/ModelReminderGate";
 import { prewarmInsightIfModelReady } from "../lib/insight";
+import { initReminder } from "../lib/notifications";
 import "../global.css";
 
 SplashScreen.preventAutoHideAsync();
@@ -17,10 +19,12 @@ export default function RootLayout() {
   const onboarded = useOnboardingStore((s) => s.onboarded);
   const isReady = useOnboardingStore((s) => s.isReady);
   const loadOnboarding = useOnboardingStore((s) => s.load);
+  const loadReminder = useReminderStore((s) => s.load);
 
   useEffect(() => {
     loadOnboarding();
-  }, [loadOnboarding]);
+    loadReminder();
+  }, [loadOnboarding, loadReminder]);
 
   useEffect(() => {
     (async () => {
@@ -36,6 +40,17 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [isReady]);
+
+  const reminderReady = useReminderStore((s) => s.isReady);
+  const reminderEnabled = useReminderStore((s) => s.enabled);
+  const reminderHour = useReminderStore((s) => s.hour);
+  const reminderMinute = useReminderStore((s) => s.minute);
+
+  useEffect(() => {
+    if (reminderReady) {
+      initReminder(reminderEnabled, reminderHour, reminderMinute);
+    }
+  }, [reminderReady, reminderEnabled, reminderHour, reminderMinute]);
 
   if (!isReady) return null;
 

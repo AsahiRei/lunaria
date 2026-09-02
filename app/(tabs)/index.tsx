@@ -1,14 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { BookOpen } from "lucide-react-native";
+import { BookOpen, Bell } from "lucide-react-native";
 import { StyledSafeAreaView as SafeAreaView } from "../../components/StyledSafeAreaView";
 import { Colors, Shadows, Gradient } from "../../constants/theme";
 import { FadeIn, useFocusKey } from "../../components/Stagger";
 import { SubjectCard } from "../../components/SubjectCard";
 import { Calendar } from "../../components/Calendar";
+import { ReminderModal } from "../../components/ReminderModal";
 import { useReviewerStore } from "../../store/useReviewerStore";
+import { useReminderStore } from "../../store/useReminderStore";
 import { dayKey } from "../../lib/insight";
 
 export default function DashboardScreen() {
@@ -16,6 +18,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const subjects = useReviewerStore((s) => s.subjects);
   const attempts = useReviewerStore((s) => s.attempts);
+  const reminderEnabled = useReminderStore((s) => s.enabled);
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
 
   const totalSubjects = subjects.length;
   const avgMastery = totalSubjects > 0
@@ -40,13 +44,30 @@ export default function DashboardScreen() {
         key={focusKey}
       >
         <FadeIn delay={0}>
-          <View className="mt-6 mb-6">
-            <Text className="text-2xl font-semibold text-ltext">
-              Overview
-            </Text>
-            <Text className="text-sm text-ltext-secondary mt-1">
-              Your learning overview at a glance.
-            </Text>
+          <View className="mt-6 mb-6 flex-row justify-between items-center">
+            <View>
+              <Text className="text-2xl font-semibold text-ltext">
+                Overview
+              </Text>
+              <Text className="text-sm text-ltext-secondary mt-1">
+                Your learning overview at a glance.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setReminderModalVisible(true)}
+              activeOpacity={0.7}
+              className="w-10 h-10 rounded-full items-center justify-center"
+              style={{
+                backgroundColor: reminderEnabled
+                  ? "rgba(99, 102, 241, 0.15)"
+                  : "rgba(136, 152, 168, 0.1)",
+              }}
+            >
+              <Bell
+                size={20}
+                color={reminderEnabled ? Colors.primary : Colors.silverDark}
+              />
+            </TouchableOpacity>
           </View>
         </FadeIn>
 
@@ -167,6 +188,10 @@ export default function DashboardScreen() {
           </View>
         </FadeIn>
       </ScrollView>
+      <ReminderModal
+        visible={reminderModalVisible}
+        onClose={() => setReminderModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
