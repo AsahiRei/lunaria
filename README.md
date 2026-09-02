@@ -33,12 +33,12 @@ Simply import a **PDF**, and Lunaria can analyze the material and generate a str
   - Clean and calming interface designed for studying.
   - Moonlight-inspired visual design.
 
-## 📱 Screenshots
+## Screenshots
 
 <p align="center">
-  <img src="./assets/home.png" width="250">
-  <img src="./assets/reviewer.png" width="250">
-  <img src="./assets/quiz.png" width="250">
+  <img src="./samples/1.png" width="250">
+  <img src="./samples/2.png" width="250">
+  <img src="./samples/3.png" width="250">
 </p>
 
 ## Goal
