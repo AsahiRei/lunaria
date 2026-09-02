@@ -10,7 +10,7 @@ type CacheEntry = {
   textHash: string;
 };
 
-function getTextHash(text: string): string {
+export function getTextHash(text: string): string {
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text.charCodeAt(i);
@@ -66,6 +66,20 @@ export function setCachedReviewer(text: string, data: ReviewerData): void {
     console.log("[cache] Cached reviewer for hash:", hash);
   } catch (error) {
     console.log("[cache] Failed to cache:", error);
+  }
+}
+
+// Deletes a single cache entry by its text hash (e.g. when the subject
+// generated from that PDF text is deleted).
+export function deleteCachedReviewerByHash(hash: string): void {
+  try {
+    const cacheFile = getCacheFile(hash);
+    if (cacheFile.exists) {
+      cacheFile.delete();
+      console.log("[cache] Deleted cache entry for hash:", hash);
+    }
+  } catch (error) {
+    console.log("[cache] Failed to delete cache entry:", error);
   }
 }
 

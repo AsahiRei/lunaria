@@ -1,12 +1,15 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useState, useEffect, useCallback } from "react";
+import { View, Text, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowLeft, BookOpen, Calculator, List, RectangleVertical, Tag } from "lucide-react-native";
+import { ArrowLeft, BookOpen, Calculator, List, RectangleVertical, Tag, Trash2 } from "lucide-react-native";
 import { Colors, Shadows, Gradient } from "../../constants/theme";
 import { FadeIn } from "../../components/Stagger";
 import { FlashCardPager } from "../../components/FlashCardPager";
+import { ConfirmModal } from "../../components/ConfirmModal";
+import { Quiz } from "../../components/Quiz";
 import { useReviewerStore } from "../../store/useReviewerStore";
+import { getReviewer, type ReviewerData } from "../../lib/storage";
 
 const FALLBACK_REVIEWER = {
   title: "No Reviewer Found",
@@ -20,15 +23,49 @@ const FALLBACK_REVIEWER = {
 export default function ReviewerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const deleteSubject = useReviewerStore((s) => s.deleteSubject);
   const [activeTab, setActiveTab] = useState<"reviewer" | "quiz">("reviewer");
   const [viewMode, setViewMode] = useState<"list" | "flashcard">("list");
-  const getReviewer = useReviewerStore((s) => s.getReviewer);
+  const [reviewer, setReviewer] = useState<ReviewerData | undefined>(undefined);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const data = (id ? getReviewer(id) : undefined) ?? FALLBACK_REVIEWER;
+  useEffect(() => {
+    let cancelled = false;
+    const loadReviewer = async () => {
+      if (!id) {
+        setReviewer(undefined);
+        return;
+      }
+      const data = await getReviewer(id);
+      if (!cancelled) {
+        setReviewer(data);
+      }
+    };
+    loadReviewer();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const data = reviewer ?? FALLBACK_REVIEWER;
   const conceptTerms = new Set(data.concepts.map((c) => c.term.toLowerCase()));
   const uniqueKeywords = data.keywords.filter(
     (k) => !conceptTerms.has(k.term.toLowerCase())
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!id) return;
+    try {
+      setIsDeleting(true);
+      await deleteSubject(id);
+      setShowDeleteModal(false);
+      router.back();
+    } catch (err) {
+      console.error("[reviewer] Failed to delete subject:", err);
+      setShowDeleteModal(false);
+      setIsDeleting(false);
+      Alert.alert("Error", "Could not delete this reviewer. Please try again.");
+    }
+  }, [id, deleteSubject, router]);
 
   return (
     <View className="flex-1 bg-midnight">
@@ -43,7 +80,15 @@ export default function ReviewerScreen() {
         <Text className="text-lg font-semibold text-lunar-light tracking-wide">
           Review Subject
         </Text>
-        <View className="w-10" />
+        <TouchableOpacity
+          onPress={() => setShowDeleteModal(true)}
+          disabled={isDeleting || !reviewer}
+          className="w-10 h-10 rounded-full items-center justify-center"
+          activeOpacity={0.7}
+          style={{ opacity: isDeleting || !reviewer ? 0.4 : 1 }}
+        >
+          <Trash2 size={20} color={Colors.error} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
@@ -293,11 +338,7 @@ export default function ReviewerScreen() {
           </>
         ) : (
           <FadeIn delay={100}>
-            <View className="items-center py-16">
-              <Text className="text-ltext-secondary text-sm">
-                Quiz content coming soon.
-              </Text>
-            </View>
+            <Quiz reviewer={data} subjectId={id} />
           </FadeIn>
         )}
 
@@ -324,6 +365,18 @@ export default function ReviewerScreen() {
           </FadeIn>
         )}
       </ScrollView>
+
+      <ConfirmModal
+        visible={showDeleteModal}
+        title="Delete Reviewer"
+        message={`Are you sure you want to delete "${data.title}"? This can't be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        loading={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteModal(false)}
+      />
     </View>
   );
 }

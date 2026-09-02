@@ -10,9 +10,19 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { Brain, ArrowLeft, CheckCircle2, Loader2, FileText } from "lucide-react-native";
+import {
+  Moon,
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  FileText,
+} from "lucide-react-native";
 import { Colors } from "../constants/theme";
-import { useReviewerStore, type GenerationState, type ReviewerData } from "../store/useReviewerStore";
+import {
+  useReviewerStore,
+  type GenerationState,
+  type ReviewerData,
+} from "../store/useReviewerStore";
 import { useLlama } from "../hooks/useLlama";
 import { useGenerationMetrics } from "../hooks/useGenerationMetrics";
 import { extractTextFromPdf, chunkDocument } from "../lib/pdfExtractor";
@@ -22,7 +32,11 @@ import {
   mergeReviewers,
   REVIEWER_JSON_SCHEMA,
 } from "../lib/reviewerPrompt";
-import { getCachedReviewer, setCachedReviewer } from "../lib/cache";
+import {
+  getCachedReviewer,
+  setCachedReviewer,
+  getTextHash,
+} from "../lib/cache";
 
 const STEPS = [
   { key: "extracting", label: "Extracting text from PDF" },
@@ -39,7 +53,7 @@ function SpinningIcon({ size, color }: { size: number; color: string }) {
     rotation.value = withRepeat(
       withTiming(360, { duration: 900, easing: Easing.linear }),
       -1,
-      false
+      false,
     );
   }, [rotation]);
 
@@ -54,7 +68,13 @@ function SpinningIcon({ size, color }: { size: number; color: string }) {
   );
 }
 
-function ProcessingOrb({ isDone, isError }: { isDone: boolean; isError: boolean }) {
+function ProcessingOrb({
+  isDone,
+  isError,
+}: {
+  isDone: boolean;
+  isError: boolean;
+}) {
   const pulse = useSharedValue(1);
   const ring = useSharedValue(0);
 
@@ -69,15 +89,15 @@ function ProcessingOrb({ isDone, isError }: { isDone: boolean; isError: boolean 
     pulse.value = withRepeat(
       withSequence(
         withTiming(1.12, { duration: 900, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
     ring.value = withRepeat(
       withTiming(360, { duration: 2800, easing: Easing.linear }),
       -1,
-      false
+      false,
     );
   }, [isDone, isError, pulse, ring]);
 
@@ -120,7 +140,7 @@ function ProcessingOrb({ isDone, isError }: { isDone: boolean; isError: boolean 
         ) : isError ? (
           <ArrowLeft size={48} color={Colors.error} />
         ) : (
-          <Brain size={48} color={Colors.primary} />
+          <Moon size={48} color={Colors.primary} />
         )}
       </Animated.View>
     </View>
@@ -130,7 +150,8 @@ function ProcessingOrb({ isDone, isError }: { isDone: boolean; isError: boolean 
 function getStepIndex(state: GenerationState, progress: string): number {
   if (state === "done") return STEPS.length;
   if (state === "error") return -1;
-  if (progress.includes("Reading PDF") || progress.includes("Extracting")) return 0;
+  if (progress.includes("Reading PDF") || progress.includes("Extracting"))
+    return 0;
   if (progress.includes("Loading AI")) return 1;
   if (progress.includes("Analyzing")) return 2;
   if (progress.includes("Generating")) return 3;
@@ -159,7 +180,8 @@ export default function ProcessingScreen() {
   } = useReviewerStore();
 
   const { loadModel } = useLlama();
-  const { startGeneration, endGeneration, updateTokens } = useGenerationMetrics();
+  const { startGeneration, endGeneration, updateTokens } =
+    useGenerationMetrics();
   const hasStarted = useRef(false);
 
   const runGeneration = useCallback(async () => {
@@ -176,7 +198,7 @@ export default function ProcessingScreen() {
       if (!pdfText || pdfText.trim().length === 0) {
         Alert.alert(
           "No Text Found",
-          "Could not extract text from this PDF. It may be a scanned or image-based document."
+          "Could not extract text from this PDF. It may be a scanned or image-based document.",
         );
         setGenerationState("idle");
         router.back();
@@ -190,7 +212,8 @@ export default function ProcessingScreen() {
       if (cached) {
         console.log("[processing] Using cached reviewer");
         reviewerData = cached;
-        reviewerData.title = fileName?.replace(/\.pdf$/i, "") || reviewerData.title;
+        reviewerData.title =
+          fileName?.replace(/\.pdf$/i, "") || reviewerData.title;
 
         const id = String(Date.now());
         const subject = {
@@ -201,7 +224,13 @@ export default function ProcessingScreen() {
           needsReview: true,
         };
 
-        addSubject(subject, reviewerData);
+        try {
+          await addSubject(subject, reviewerData, getTextHash(pdfText));
+          console.log("[processing] Saved subject successfully:", id);
+        } catch (err) {
+          console.error("[processing] Failed to save subject:", err);
+        }
+
         endGeneration(0, true);
         setGenerationState("done");
 
@@ -221,7 +250,7 @@ export default function ProcessingScreen() {
       } catch {
         Alert.alert(
           "Model Error",
-          "Failed to load the AI model. Try downloading it again from the Add PDF tab."
+          "Failed to load the AI model. Try downloading it again from the Add PDF tab.",
         );
         setGenerationState("idle");
         router.back();
@@ -243,7 +272,7 @@ export default function ProcessingScreen() {
           chunks[chunkIndex],
           focusTopic || undefined,
           pageRange === "custom" ? customRange : undefined,
-          sectionHint
+          sectionHint,
         );
 
         let chunkReviewer: ReviewerData | null = null;
@@ -257,7 +286,7 @@ export default function ProcessingScreen() {
               : "reviewer";
           setGenerationState(
             "generating",
-            `Generating ${sectionLabel}... (attempt ${attempts}/${maxAttempts})`
+            `Generating ${sectionLabel}... (attempt ${attempts}/${maxAttempts})`,
           );
 
           const result = await ctx.completion(
@@ -284,23 +313,26 @@ export default function ProcessingScreen() {
                 if (tokenCount % 20 === 0) {
                   setGenerationState(
                     "generating",
-                    `Generating ${sectionLabel}... (${tokenCount} tokens)`
+                    `Generating ${sectionLabel}... (${tokenCount} tokens)`,
                   );
                 }
               }
-            }
+            },
           );
 
           setGenerationState("generating", "Parsing results...");
           console.log("[processing] Raw text:", result.text?.slice(0, 500));
-          console.log("[processing] Raw content:", result.content?.slice(0, 500));
+          console.log(
+            "[processing] Raw content:",
+            result.content?.slice(0, 500),
+          );
           console.log(
             "[processing] truncated:",
             result.truncated,
             "stopped_limit:",
             result.stopped_limit,
             "tokens_predicted:",
-            result.tokens_predicted
+            result.tokens_predicted,
           );
           chunkReviewer = parseReviewerResponse(result.text || result.content);
         }
@@ -318,14 +350,15 @@ export default function ProcessingScreen() {
       if (!reviewerData) {
         Alert.alert(
           "Generation Failed",
-          "The AI model could not generate a valid reviewer after multiple attempts. Try a shorter or simpler document."
+          "The AI model could not generate a valid reviewer after multiple attempts. Try a shorter or simpler document.",
         );
         setGenerationState("idle");
         router.back();
         return;
       }
 
-      reviewerData.title = fileName?.replace(/\.pdf$/i, "") || reviewerData.title;
+      reviewerData.title =
+        fileName?.replace(/\.pdf$/i, "") || reviewerData.title;
 
       const id = String(Date.now());
       const subject = {
@@ -336,7 +369,13 @@ export default function ProcessingScreen() {
         needsReview: true,
       };
 
-      addSubject(subject, reviewerData);
+      try {
+        await addSubject(subject, reviewerData, getTextHash(pdfText));
+        console.log("[processing] Saved subject successfully:", id);
+      } catch (err) {
+        console.error("[processing] Failed to save subject:", err);
+      }
+
       setCachedReviewer(pdfText, reviewerData);
       setGenerationState("done");
 
@@ -400,15 +439,15 @@ export default function ProcessingScreen() {
             {isDone
               ? "Reviewer Ready!"
               : isError
-              ? "Something went wrong"
-              : "Creating Your Reviewer"}
+                ? "Something went wrong"
+                : "Creating Your Reviewer"}
           </Text>
           <Text className="text-sm text-ltext-secondary text-center">
             {isDone
               ? "Redirecting you shortly..."
               : isError
-              ? "Returning to try again..."
-              : fileName || "Processing your document"}
+                ? "Returning to try again..."
+                : fileName || "Processing your document"}
           </Text>
         </View>
 
@@ -425,14 +464,14 @@ export default function ProcessingScreen() {
                   backgroundColor: isActive
                     ? "rgba(99, 102, 241, 0.1)"
                     : isCompleted
-                    ? "rgba(74, 222, 128, 0.05)"
-                    : "rgba(255, 255, 255, 0.02)",
+                      ? "rgba(74, 222, 128, 0.05)"
+                      : "rgba(255, 255, 255, 0.02)",
                   borderWidth: 1,
                   borderColor: isActive
                     ? "rgba(99, 102, 241, 0.3)"
                     : isCompleted
-                    ? "rgba(74, 222, 128, 0.15)"
-                    : "rgba(255, 255, 255, 0.05)",
+                      ? "rgba(74, 222, 128, 0.15)"
+                      : "rgba(255, 255, 255, 0.05)",
                 }}
               >
                 <View
@@ -441,8 +480,8 @@ export default function ProcessingScreen() {
                     backgroundColor: isCompleted
                       ? "rgba(74, 222, 128, 0.2)"
                       : isActive
-                      ? "rgba(99, 102, 241, 0.2)"
-                      : "rgba(255, 255, 255, 0.05)",
+                        ? "rgba(99, 102, 241, 0.2)"
+                        : "rgba(255, 255, 255, 0.05)",
                   }}
                 >
                   {isCompleted ? (
@@ -462,8 +501,8 @@ export default function ProcessingScreen() {
                     color: isCompleted
                       ? Colors.success
                       : isActive
-                      ? Colors.textPrimary
-                      : Colors.textMuted,
+                        ? Colors.textPrimary
+                        : Colors.textMuted,
                     fontWeight: isActive ? "600" : "400",
                   }}
                 >
@@ -487,14 +526,23 @@ export default function ProcessingScreen() {
         )}
       </View>
 
-      <View className="px-8 pb-12">
-        <View className="flex-row items-center gap-2 bg-midnight-light px-4 py-3 rounded-full border border-midnight-border justify-center">
-          <FileText size={14} color={Colors.silverDark} />
-          <Text className="text-xs text-ltext-secondary">
-            Processing 100% offline on your device
-          </Text>
+        <View className="px-8 pb-12 gap-2">
+          {!isDone && !isError && (
+            <Text
+              className="text-xs text-center"
+              style={{ color: "rgba(251, 191, 36, 0.8)" }}
+            >
+              Large PDFs may take a few minutes to generate. Please keep the app
+              open.
+            </Text>
+          )}
+          <View className="flex-row items-center gap-2 bg-midnight-light px-4 py-3 rounded-full border border-midnight-border justify-center">
+            <FileText size={14} color={Colors.silverDark} />
+            <Text className="text-xs text-ltext-secondary">
+              Processing 100% offline on your device
+            </Text>
+          </View>
         </View>
-      </View>
     </View>
   );
 }

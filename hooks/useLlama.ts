@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { initLlama, releaseAllLlama, type LlamaContext } from "llama.rn";
 import { File, Paths } from "expo-file-system";
 
@@ -6,6 +6,55 @@ const MODEL_URL =
   "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q5_k_m.gguf";
 
 const MODEL_FILENAME = "qwen2.5-1.5b-instruct-q5_k_m.gguf";
+
+// Shared across every useLlama() instance so the model is only ever in
+// memory once (e.g. loaded by processing, reused by analytics).
+let sharedContext: LlamaContext | null = null;
+let loadingPromise: Promise<LlamaContext> | null = null;
+
+export function getSharedContext(): LlamaContext | null {
+  return sharedContext;
+}
+
+export async function ensureModelLoaded(
+  onProgress?: (progress: number) => void
+): Promise<LlamaContext> {
+  if (sharedContext) return sharedContext;
+
+  if (!loadingPromise) {
+    const promise = (async () => {
+      const file = getModelFile();
+      if (!file.exists) {
+        throw new Error("Model file not found. Please download it first.");
+      }
+
+      const ctx = await initLlama(
+        {
+          model: file.uri,
+          use_mlock: false,
+          n_ctx: 4096,
+          n_gpu_layers: 99,
+        },
+        (progress) => onProgress?.(progress)
+      );
+
+      sharedContext = ctx;
+      return ctx;
+    })();
+
+    loadingPromise = promise;
+    promise
+      .then(
+        () => {},
+        () => {}
+      )
+      .finally(() => {
+        if (loadingPromise === promise) loadingPromise = null;
+      });
+  }
+
+  return loadingPromise;
+}
 
 function getModelFile(): File {
   return new File(Paths.document, MODEL_FILENAME);
@@ -33,8 +82,6 @@ export function useLlama() {
     modelExists: false,
     error: null,
   });
-
-  const contextRef = useRef<LlamaContext | null>(null);
 
   const checkModel = useCallback(async () => {
     const file = getModelFile();
@@ -89,29 +136,18 @@ export function useLlama() {
   }, []);
 
   const loadModel = useCallback(async () => {
-    if (contextRef.current) return contextRef.current;
-
-    const file = getModelFile();
-    if (!file.exists) {
-      throw new Error("Model file not found. Please download it first.");
+    if (sharedContext) {
+      setState((s) => ({ ...s, isLoaded: true }));
+      return sharedContext;
     }
 
     setState((s) => ({ ...s, isLoading: true, error: null }));
 
     try {
-      const ctx = await initLlama(
-        {
-          model: file.uri,
-          use_mlock: false,
-          n_ctx: 4096,
-          n_gpu_layers: 99,
-        },
-        (progress) => {
-          setState((s) => ({ ...s, loadProgress: progress }));
-        },
+      const ctx = await ensureModelLoaded((progress) =>
+        setState((s) => ({ ...s, loadProgress: progress }))
       );
 
-      contextRef.current = ctx;
       setState((s) => ({
         ...s,
         context: ctx,
@@ -138,7 +174,7 @@ export function useLlama() {
       params: Parameters<LlamaContext["completion"]>[0],
       onToken?: Parameters<LlamaContext["completion"]>[1],
     ) => {
-      const ctx = contextRef.current;
+      const ctx = sharedContext;
       if (!ctx) throw new Error("Model not loaded");
 
       return ctx.completion(params, onToken);
@@ -147,9 +183,9 @@ export function useLlama() {
   );
 
   const release = useCallback(async () => {
-    if (contextRef.current) {
+    if (sharedContext) {
       await releaseAllLlama();
-      contextRef.current = null;
+      sharedContext = null;
       setState({
         context: null,
         isLoaded: false,

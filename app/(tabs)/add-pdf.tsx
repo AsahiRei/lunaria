@@ -13,18 +13,18 @@ import {
   Plus,
   BookOpen,
   Target,
-  Brain,
+  Moon,
   Lock,
   FileText,
   X,
-  Download,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, Shadows, Gradient } from "../../constants/theme";
 import { FadeIn, useFocusKey } from "../../components/Stagger";
-import { TopAppBar } from "../../components/TopAppBar";
+import { StyledSafeAreaView as SafeAreaView } from "../../components/StyledSafeAreaView";
 import { useReviewerStore } from "../../store/useReviewerStore";
 import { useLlama } from "../../hooks/useLlama";
+import { useModelModalStore } from "../../store/useModelModalStore";
 import { pickPdf, type PickedPdf } from "../../lib/pdfExtractor";
 
 export default function AddPdfScreen() {
@@ -33,13 +33,8 @@ export default function AddPdfScreen() {
   const { generationState } = useReviewerStore();
   const {
     isLoaded,
-    isLoading: modelLoading,
-    isDownloading,
-    downloadProgress,
-    loadProgress,
     modelExists,
     checkModel,
-    downloadModel,
   } = useLlama();
 
   const [pageRange, setPageRange] = useState<"all" | "custom">("all");
@@ -51,29 +46,36 @@ export default function AddPdfScreen() {
     checkModel();
   }, [checkModel]);
 
+  const needsModel = !modelExists && !isLoaded;
+  const modelModalVisible = useModelModalStore((s) => s.visible);
+  const openModelModal = useModelModalStore((s) => s.openModelModal);
+
+  useEffect(() => {
+    if (!modelModalVisible) checkModel();
+  }, [modelModalVisible, checkModel]);
+
   const handlePickFile = useCallback(async () => {
-    if (generationState === "generating" || generationState === "extracting") return;
+    if (generationState === "generating" || generationState === "extracting")
+      return;
     const file = await pickPdf();
     if (file) {
       setPickedFile(file);
+      if (needsModel) openModelModal();
     }
-  }, [generationState]);
+  }, [generationState, needsModel, openModelModal]);
 
   const handleClearFile = useCallback(() => {
     setPickedFile(null);
   }, []);
 
-  const handleDownloadModel = useCallback(async () => {
-    try {
-      await downloadModel();
-    } catch {
-      Alert.alert("Download Failed", "Could not download the AI model. Check your connection and try again.");
-    }
-  }, [downloadModel]);
-
   const handleGenerate = useCallback(() => {
     if (!pickedFile) {
       Alert.alert("No File", "Please select a PDF file first.");
+      return;
+    }
+
+    if (needsModel) {
+      openModelModal();
       return;
     }
 
@@ -88,15 +90,12 @@ export default function AddPdfScreen() {
         customRange: pageRange === "custom" ? customRange : undefined,
       },
     });
-  }, [pickedFile, focusTopic, pageRange, customRange, router]);
+  }, [pickedFile, focusTopic, pageRange, customRange, router, needsModel, openModelModal]);
 
-  const showDownloadPrompt = !modelExists && !isDownloading && !isLoaded;
-  const canGenerate = pickedFile && (isLoaded || modelExists);
+  const canGenerate = !!pickedFile;
 
   return (
-    <View className="flex-1 bg-midnight">
-      <TopAppBar />
-
+    <SafeAreaView edges={["top"]} className="flex-1 bg-midnight">
       <ScrollView
         className="flex-1 px-5"
         contentContainerStyle={{ paddingBottom: 32 }}
@@ -113,99 +112,16 @@ export default function AddPdfScreen() {
           </View>
         </FadeIn>
 
-        <FadeIn delay={50}>
-          <LinearGradient
-            colors={[...Gradient.card]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            className="rounded-xl p-4 border border-midnight-border mb-4 overflow-hidden"
-            style={Shadows.card}
-          >
-            <View className="flex-row items-center gap-2 mb-3">
-              <Download size={18} color={Colors.primary} />
-              <Text className="text-base font-semibold text-ltext">
-                AI Model
-              </Text>
-            </View>
-
-            {isDownloading ? (
-              <View>
-                <View className="flex-row justify-between mb-2">
-                  <Text className="text-sm text-ltext-secondary">
-                    Downloading Qwen2.5-1.5B...
-                  </Text>
-                  <Text className="text-sm text-lunar-light font-medium">
-                    {Math.round(downloadProgress * 100)}%
-                  </Text>
-                </View>
-                <View className="w-full h-2 bg-midnight-lighter rounded-full overflow-hidden">
-                  <View
-                    className="h-full bg-lunar rounded-full"
-                    style={{ width: `${downloadProgress * 100}%` }}
-                  />
-                </View>
-                <Text className="text-xs text-ltext-muted mt-2">
-                    ~1.29 GB - One-time download, stored on device
-                </Text>
-              </View>
-            ) : modelLoading ? (
-              <View>
-                <View className="flex-row justify-between mb-2">
-                  <Text className="text-sm text-ltext-secondary">
-                    Loading model into memory...
-                  </Text>
-                  <Text className="text-sm text-lunar-light font-medium">
-                    {Math.round(loadProgress * 100)}%
-                  </Text>
-                </View>
-                <View className="w-full h-2 bg-midnight-lighter rounded-full overflow-hidden">
-                  <View
-                    className="h-full bg-lunar rounded-full"
-                    style={{ width: `${loadProgress * 100}%` }}
-                  />
-                </View>
-              </View>
-            ) : isLoaded ? (
-              <View className="flex-row items-center gap-2">
-                <View className="w-2 h-2 rounded-full bg-green-400" />
-                <Text className="text-sm text-ltext-secondary">
-                  Qwen2.5-1.5B ready
-                </Text>
-              </View>
-            ) : showDownloadPrompt ? (
-              <View>
-                <Text className="text-sm text-ltext-secondary mb-3">
-                  Download the AI model to generate reviewers offline.
-                </Text>
-                <TouchableOpacity
-                  onPress={handleDownloadModel}
-                  className="flex-row items-center gap-2 bg-lunar px-4 py-2.5 rounded-full self-start"
-                  activeOpacity={0.8}
-                >
-                  <Download size={16} color="#ffffff" />
-                  <Text className="text-sm font-medium text-white">
-                    Download Model (1.29 GB)
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View className="flex-row items-center gap-2">
-                <View className="w-2 h-2 rounded-full bg-lunar" />
-                <Text className="text-sm text-ltext-secondary">
-                  Model loaded
-                </Text>
-              </View>
-            )}
-          </LinearGradient>
-        </FadeIn>
-
         <FadeIn delay={100}>
           <TouchableOpacity
             className="rounded-xl p-6 mb-4 border border-midnight-border items-center justify-center min-h-[220px] relative overflow-hidden"
             activeOpacity={0.8}
             style={Shadows.elevated}
             onPress={handlePickFile}
-            disabled={generationState === "generating" || generationState === "extracting"}
+            disabled={
+              generationState === "generating" ||
+              generationState === "extracting"
+            }
           >
             <LinearGradient
               colors={[...Gradient.card]}
@@ -291,7 +207,10 @@ export default function AddPdfScreen() {
                   }`}
                   onPress={() => setPageRange("all")}
                   activeOpacity={0.7}
-                  disabled={generationState === "generating" || generationState === "extracting"}
+                  disabled={
+                    generationState === "generating" ||
+                    generationState === "extracting"
+                  }
                 >
                   <View
                     className={`w-4 h-4 rounded-full border-2 items-center justify-center ${
@@ -315,7 +234,10 @@ export default function AddPdfScreen() {
                   }`}
                   onPress={() => setPageRange("custom")}
                   activeOpacity={0.7}
-                  disabled={generationState === "generating" || generationState === "extracting"}
+                  disabled={
+                    generationState === "generating" ||
+                    generationState === "extracting"
+                  }
                 >
                   <View className="flex-row items-center gap-3">
                     <View
@@ -364,8 +286,8 @@ export default function AddPdfScreen() {
                 </Text>
               </View>
               <Text className="text-sm text-ltext-secondary mb-3">
-                Guide the reviewer to focus on specific themes or concepts within
-                the document.
+                Guide the reviewer to focus on specific themes or concepts
+                within the document.
               </Text>
               <TextInput
                 className="w-full bg-midnight rounded-lg border border-midnight-border text-sm p-3 text-ltext"
@@ -385,35 +307,35 @@ export default function AddPdfScreen() {
 
         <FadeIn delay={400}>
           <View className="gap-4">
-              <TouchableOpacity
-                className="w-full flex-row items-center justify-center gap-2 py-4 px-8 rounded-full overflow-hidden"
-                activeOpacity={0.8}
-                style={Shadows.glow}
-                onPress={handleGenerate}
-                disabled={!canGenerate}
-              >
-                <LinearGradient
-                  colors={[Colors.primary, Colors.primaryDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  className="absolute inset-0"
-                />
-                <Brain size={22} color="#ffffff" />
-                <Text className="text-lg font-semibold text-white relative z-10">
-                  Generate Reviewer
-                </Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              className="w-full flex-row items-center justify-center gap-2 py-4 px-8 rounded-full overflow-hidden"
+              activeOpacity={0.8}
+              style={Shadows.glow}
+              onPress={handleGenerate}
+              disabled={!canGenerate}
+            >
+              <LinearGradient
+                colors={[Colors.primary, Colors.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                className="absolute inset-0"
+              />
+              <Moon size={22} color="#ffffff" />
+              <Text className="text-lg font-semibold text-white relative z-10">
+                Generate Reviewer
+              </Text>
+            </TouchableOpacity>
 
-              <View className="flex-row items-center gap-2 bg-midnight-light px-4 py-2 rounded-full border border-midnight-border">
-                <Lock size={14} color={Colors.silverDark} />
-                <Text className="text-xs text-ltext-secondary opacity-80 px-2">
-                  Processing happens 100% offline. Your data never leaves this
-                  device.
-                </Text>
-              </View>
+            <View className="flex-row items-center gap-2 bg-midnight-light px-4 py-2 rounded-full border border-midnight-border">
+              <Lock size={14} color={Colors.silverDark} />
+              <Text className="text-xs text-ltext-secondary opacity-80 px-2">
+                Processing happens 100% offline. Your data never leaves this
+                device.
+              </Text>
+            </View>
           </View>
         </FadeIn>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

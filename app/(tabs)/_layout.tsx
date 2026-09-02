@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Home, PlusCircle, BarChart3 } from "lucide-react-native";
+import { Home, PlusCircle, BarChart3, Info } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, Gradient } from "../../constants/theme";
 
@@ -14,8 +14,6 @@ export default function TabsLayout() {
           backgroundColor: "transparent",
           borderTopColor: Colors.surfaceBorder,
           height: 70,
-          paddingBottom: 8,
-          paddingTop: 8,
         },
         tabBarBackground: () => (
           <LinearGradient
@@ -25,9 +23,9 @@ export default function TabsLayout() {
             style={{ flex: 1 }}
           />
         ),
-        ...( { contentStyle: { backgroundColor: "#0a0a1a" } } as any ),
+        ...({ contentStyle: { backgroundColor: "#0a0a1a" } } as any),
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 10,
           fontWeight: "500",
           letterSpacing: 0.05,
         },
@@ -36,10 +34,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Dashboard",
-          tabBarIcon: ({ color, size }) => (
-            <Home size={size} color={color} />
-          ),
+          title: "Home",
+          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -58,6 +54,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <BarChart3 size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="about"
+        options={{
+          title: "About",
+          tabBarIcon: ({ color, size }) => <Info size={size} color={color} />,
         }}
       />
     </Tabs>

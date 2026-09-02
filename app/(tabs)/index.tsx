@@ -1,17 +1,21 @@
+import { useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BookOpen } from "lucide-react-native";
+import { StyledSafeAreaView as SafeAreaView } from "../../components/StyledSafeAreaView";
 import { Colors, Shadows, Gradient } from "../../constants/theme";
 import { FadeIn, useFocusKey } from "../../components/Stagger";
 import { SubjectCard } from "../../components/SubjectCard";
-import { TopAppBar } from "../../components/TopAppBar";
+import { Calendar } from "../../components/Calendar";
 import { useReviewerStore } from "../../store/useReviewerStore";
+import { dayKey } from "../../lib/insight";
 
 export default function DashboardScreen() {
   const focusKey = useFocusKey();
   const router = useRouter();
   const subjects = useReviewerStore((s) => s.subjects);
+  const attempts = useReviewerStore((s) => s.attempts);
 
   const totalSubjects = subjects.length;
   const avgMastery = totalSubjects > 0
@@ -19,15 +23,26 @@ export default function DashboardScreen() {
     : 0;
   const needsReview = subjects.filter((s) => s.needsReview).length;
 
-  return (
-    <View className="flex-1 bg-midnight">
-      <TopAppBar />
+  const markedDays = useMemo(() => {
+    const counts = new Map<string, number>();
+    attempts.forEach((a) => {
+      const key = dayKey(new Date(a.completedAt));
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [attempts]);
 
-      <ScrollView className="flex-1 px-5" key={focusKey}>
+  return (
+    <SafeAreaView edges={['top']} className="flex-1 bg-midnight">
+      <ScrollView
+        className="flex-1 px-5"
+        contentContainerStyle={{ paddingBottom: 32 }}
+        key={focusKey}
+      >
         <FadeIn delay={0}>
           <View className="mt-6 mb-6">
             <Text className="text-2xl font-semibold text-ltext">
-              Dashboard
+              Overview
             </Text>
             <Text className="text-sm text-ltext-secondary mt-1">
               Your learning overview at a glance.
@@ -83,6 +98,12 @@ export default function DashboardScreen() {
 
         <FadeIn delay={100}>
           <View className="mb-4">
+            <Calendar markedDays={markedDays} />
+          </View>
+        </FadeIn>
+
+        <FadeIn delay={200}>
+          <View className="mb-4">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-semibold text-ltext">
                 Current Subjects
@@ -97,7 +118,7 @@ export default function DashboardScreen() {
             </View>
 
             {totalSubjects === 0 ? (
-              <FadeIn delay={200}>
+              <FadeIn delay={300}>
                 <TouchableOpacity
                   onPress={() => router.push("/(tabs)/add-pdf")}
                   activeOpacity={0.8}
@@ -134,7 +155,7 @@ export default function DashboardScreen() {
             ) : (
               <View className="gap-3">
                 {subjects.map((subject, index) => (
-                  <FadeIn key={subject.id} delay={200 + index * 80}>
+                  <FadeIn key={subject.id} delay={300 + index * 80}>
                     <SubjectCard
                       subject={subject}
                       onPress={() => router.push({ pathname: "/reviewer/[id]", params: { id: subject.id } })}
@@ -146,6 +167,6 @@ export default function DashboardScreen() {
           </View>
         </FadeIn>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

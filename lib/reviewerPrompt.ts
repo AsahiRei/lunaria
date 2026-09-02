@@ -121,10 +121,17 @@ function parseTermList(value: unknown): { term: string; definition: string }[] {
         "term" in item &&
         "definition" in item
     )
-    .map((item: { term: string; definition: string }) => ({
-      term: String(item.term || "").trim(),
-      definition: String(item.definition || "").trim(),
-    }))
+    .map((item: unknown) => {
+      if (typeof item !== "object" || item === null) return null;
+      const term = String((item as { term: string }).term || "").trim();
+      const definition = String((item as { definition: string }).definition || "").trim();
+      return term.length > 0 && definition.length > 0 ? { term, definition } as { term: string; definition: string } : null;
+    })
+    .filter((item): item is { term: string; definition: string } => item !== null)
+    .filter(
+      (item): item is { term: string; definition: string } =>
+        item.term.length > 0 && item.definition.length > 0
+    )
     .filter((item) => item.term.length > 0 && item.definition.length > 0);
 }
 
