@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, TextInput } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, X } from "lucide-react-native";
+import { Search, X, ArrowLeft } from "lucide-react-native";
 import { Colors } from "../constants/theme";
 import { FadeIn } from "../components/Stagger";
 import { SubjectCard } from "../components/SubjectCard";
-import { TopAppBar } from "../components/TopAppBar";
 import { useReviewerStore } from "../store/useReviewerStore";
 
 export default function SubjectsScreen() {
@@ -21,7 +20,19 @@ export default function SubjectsScreen() {
 
   return (
     <View className="flex-1 bg-midnight">
-      <TopAppBar title="All Subjects" />
+      <View className="flex-row items-center justify-between px-5 pt-12 pb-3">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="w-10 h-10 rounded-full items-center justify-center"
+          activeOpacity={0.7}
+        >
+          <ArrowLeft size={22} color={Colors.silver} />
+        </TouchableOpacity>
+        <Text className="text-lg font-semibold text-lunar-light tracking-wide">
+          All Subjects
+        </Text>
+        <View className="w-10 h-10" />
+      </View>
 
       <View className="px-5 mt-4 mb-2">
         <View className="flex-row items-center gap-2 bg-surface rounded-xl px-3 py-1.5 border border-midnight-border">

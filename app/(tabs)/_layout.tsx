@@ -13,7 +13,6 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: "transparent",
           borderTopColor: Colors.surfaceBorder,
-          height: 70,
         },
         tabBarBackground: () => (
           <LinearGradient

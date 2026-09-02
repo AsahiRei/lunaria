@@ -10,7 +10,7 @@ import {
 import { Globe, GitFork, Info } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, Shadows, Gradient } from "../../constants/theme";
-import { FadeIn } from "../../components/Stagger";
+import { FadeIn, useFocusKey } from "../../components/Stagger";
 import { StyledSafeAreaView as SafeAreaView } from "../../components/StyledSafeAreaView";
 
 const LOGO_IMAGE = require("../../assets/images/lunaria.png");
@@ -29,6 +29,7 @@ const SOCIALS = [
 ];
 
 export default function AboutScreen() {
+  const focusKey = useFocusKey();
   const openLink = useCallback(async (url: string) => {
     try {
       await Linking.openURL(url);
@@ -48,7 +49,7 @@ export default function AboutScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <FadeIn delay={0}>
+        <FadeIn delay={0} focusKey={focusKey}>
           <View className="items-center mb-8">
             <Image
               source={LOGO_IMAGE}
@@ -58,7 +59,7 @@ export default function AboutScreen() {
           </View>
         </FadeIn>
 
-        <FadeIn delay={100}>
+        <FadeIn delay={100} focusKey={focusKey}>
           <View className="items-center mb-8">
             <Text className="text-3xl font-bold text-ltext text-center">
               Lunaria
@@ -69,7 +70,7 @@ export default function AboutScreen() {
           </View>
         </FadeIn>
 
-        <FadeIn delay={200}>
+        <FadeIn delay={200} focusKey={focusKey}>
           <LinearGradient
             colors={[...Gradient.card]}
             start={{ x: 0, y: 0 }}
@@ -94,7 +95,7 @@ export default function AboutScreen() {
           </LinearGradient>
         </FadeIn>
 
-        <FadeIn delay={300}>
+        <FadeIn delay={300} focusKey={focusKey}>
           <LinearGradient
             colors={[...Gradient.card]}
             start={{ x: 0, y: 0 }}
@@ -135,7 +136,7 @@ export default function AboutScreen() {
           </LinearGradient>
         </FadeIn>
 
-        <FadeIn delay={400}>
+        <FadeIn delay={400} focusKey={focusKey}>
           <Text className="text-xs text-ltext-muted text-center mt-2">
             Version 1.0.0
           </Text>

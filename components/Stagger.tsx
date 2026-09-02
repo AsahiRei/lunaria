@@ -6,15 +6,20 @@ type StaggerProps = {
   children: ReactNode;
   delay?: number;
   duration?: number;
+  focusKey?: number;
 };
 
 export function FadeIn({
   children,
   delay = 0,
   duration = 400,
+  focusKey,
 }: StaggerProps) {
   return (
-    <Animated.View entering={FadeInUp.delay(delay).duration(duration)}>
+    <Animated.View
+      key={focusKey}
+      entering={FadeInUp.delay(delay).duration(duration)}
+    >
       {children}
     </Animated.View>
   );
